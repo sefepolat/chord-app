@@ -52,8 +52,30 @@ function transChord(ch, n) {
 // ---- Render ----
 const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 // [Am]söz satırını: üstte akor satırı, altta söz satırı olacak şekilde çevir
+// Hizalı (akor satırı üstte, söz altta) düz metin için: akor satırlarını bulur, renklendirir ve
+// transpoze ederken sütun hizasını korur.
+const CHORD_RE = /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add)?\d*(?:\([^)]*\))?(?:sus\d|add\d+)?(?:\/[A-G][#b]?)?$/;
+const isChordLine = line => {
+  const t = line.trim().split(/\s+/);
+  return line.trim() !== '' && t.every(x => CHORD_RE.test(x));
+};
+function renderRaw(text, n) {
+  return text.split('\n').map(line => {
+    if (!isChordLine(line)) return esc(line);
+    let out = '', len = 0;
+    for (const m of line.matchAll(/\S+/g)) {
+      let pad = m.index - len;
+      if (pad < 1 && len > 0) pad = 1;
+      pad = Math.max(pad, 0);
+      const c = transChord(m[0], n);
+      out += ' '.repeat(pad) + `<span class="chord">${esc(c)}</span>`;
+      len += pad + c.length;
+    }
+    return out;
+  }).join('\n');
+}
 function renderBody(text, n, raw) {
-  if (raw) return esc(text); // hizalı metin: hiçbir değişiklik yapmadan, olduğu gibi göster
+  if (raw) return renderRaw(text, n); // hizalı metin: yerleşimi değiştirmeden göster
   return text.split('\n').map(line => {
     if (/^\s*\{.*\}\s*$/.test(line) || /^\s*(\[?(Verse|Chorus|Bridge|Intro|Solo|Nakarat|Kıta)[^\]]*\]?:?)\s*$/i.test(line))
       return `<span class="sec">${esc(line.replace(/[{}]/g, ''))}</span>`;
@@ -131,7 +153,7 @@ function edit(s) {
   $('eTitle').value = s ? s.title : '';
   $('eArtist').value = s ? s.artist : '';
   $('eBody').value = s ? s.body : '';
-  $('eRaw').checked = s ? !!s.raw : false;
+  $('eRaw').checked = s ? !!s.raw : true;
   $('deleteBtn').hidden = !s;
   show('editView');
 }
@@ -153,13 +175,33 @@ $('exportBtn').onclick = () => {
   a.download = 'songs.json'; a.click();
 };
 $('importFile').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
+  const files = [...e.target.files]; if (!files.length) return;
+  let added = 0;
   try {
-    const incoming = JSON.parse(await f.text());
-    const byId = new Map(songs.map(s => [s.id, s]));
-    incoming.forEach(s => { const id = s.id || uid(); const song = { ...s, id }; byId.set(id, song); cloud.pushSong(song); });
-    songs = [...byId.values()]; save(); renderList();
+    for (const f of files) {
+      const text = await f.text();
+      if (/\.json$/i.test(f.name)) { // yedek dosyası
+        JSON.parse(text).forEach(s => { addSong({ ...s, id: s.id || uid() }); added++; });
+      } else { // düz metin (.txt): dosya adı = şarkı adı, hizalı metin olarak eklenir
+        const body = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+          .split('\n').map(l => { // sekmeleri 8'lik duraklarla boşluğa çevir
+            let o = ''; for (const ch of l) o += ch === '\t' ? ' '.repeat(8 - o.length % 8) : ch; return o;
+          }).join('\n');
+        const name = f.name.replace(/\.[^.]+$/, '');
+        const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
+        addSong({ id: uid(), title: (title || name).trim(), artist: artist.trim(), body, raw: true });
+        added++;
+      }
+    }
+    save(); renderList();
+    alert(added + ' şarkı eklendi.');
   } catch { alert('Geçersiz dosya'); }
+  e.target.value = '';
 };
+function addSong(song) {
+  const i = songs.findIndex(s => s.id === song.id);
+  if (i >= 0) songs[i] = song; else songs.push(song);
+  cloud.pushSong(song);
+}
 
 init();

@@ -22,7 +22,7 @@
     <div class="row">
       <button id="newBtn">+ Yeni şarkı</button>
       <button id="exportBtn">Dışa aktar</button>
-      <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json" hidden></label>
+      <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json,.txt,text/plain" multiple hidden></label>
     </div>
   </section>
 
@@ -45,7 +45,7 @@
     <input id="eArtist" placeholder="Sanatçı">
     <textarea id="eBody" wrap="off" spellcheck="false" placeholder="Akorları köşeli parantezle yaz:
 [Am]Sözler burada [G]başlar..."></textarea>
-    <label class="row"><input type="checkbox" id="eRaw" style="width:auto;margin:0"> Hizalı metin: olduğu gibi göster (transpoze çalışmaz)</label>
+    <label class="row"><input type="checkbox" id="eRaw" style="width:auto;margin:0"> Hizalı metin (akorlar sözün üstünde yazılı; köşeli parantez gerekmez)</label>
     <div class="row">
       <button id="saveBtn">Kaydet</button>
       <button id="deleteBtn" class="danger">Sil</button>
