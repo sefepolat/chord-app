@@ -52,11 +52,15 @@ function transChord(ch, n) {
 // ---- Render ----
 const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 // [Am]söz satırını: üstte akor satırı, altta söz satırı olacak şekilde çevir
-function renderBody(text, n) {
+function renderBody(text, n, raw) {
+  if (raw) return esc(text); // hizalı metin: hiçbir değişiklik yapmadan, olduğu gibi göster
   return text.split('\n').map(line => {
     if (/^\s*\{.*\}\s*$/.test(line) || /^\s*(\[?(Verse|Chorus|Bridge|Intro|Solo|Nakarat|Kıta)[^\]]*\]?:?)\s*$/i.test(line))
       return `<span class="sec">${esc(line.replace(/[{}]/g, ''))}</span>`;
     if (!/\[[^\]]+\]/.test(line)) return esc(line);
+    // Satırda sadece akor + boşluk varsa (söz yok): tek satır olarak, sütunları koruyarak yaz
+    if (line.replace(/\[[^\]]+\]/g, '').trim() === '')
+      return line.replace(/\[([^\]]+)\]/g, (_, c) => ` <span class="chord">${esc(transChord(c, n))}</span> `);
     return buildTwoLines(line.split(/(\[[^\]]+\])/), n);
   }).join('\n');
 }
@@ -101,7 +105,7 @@ function openSong(id) {
   $('title').textContent = current.title;
 }
 function draw() {
-  $('songBody').innerHTML = renderBody(current.body, transpose);
+  $('songBody').innerHTML = renderBody(current.body, transpose, current.raw);
   $('songBody').style.fontSize = fontSize + 'px';
   $('trLabel').textContent = (transpose > 0 ? '+' : '') + transpose;
 }
@@ -127,12 +131,13 @@ function edit(s) {
   $('eTitle').value = s ? s.title : '';
   $('eArtist').value = s ? s.artist : '';
   $('eBody').value = s ? s.body : '';
+  $('eRaw').checked = s ? !!s.raw : false;
   $('deleteBtn').hidden = !s;
   show('editView');
 }
 $('saveBtn').onclick = () => {
   const title = $('eTitle').value.trim() || 'Adsız';
-  const data = { title, artist: $('eArtist').value.trim(), body: $('eBody').value };
+  const data = { title, artist: $('eArtist').value.trim(), body: $('eBody').value, raw: $('eRaw').checked };
   if (current) Object.assign(current, data);
   else { current = { id: uid(), ...data }; songs.push(current); }
   save(); cloud.pushSong(current); openSong(current.id);
