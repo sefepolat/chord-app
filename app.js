@@ -21,6 +21,7 @@ async function init() {
     $('authBtn').hidden = false;
     cloud.initCloud({
       getLocal: () => songs,
+      onError: e => { console.error(e); alert('Firebase hatası: ' + (e.code || e.message) + '\nFirestore kurallarını ve yetkili alan adlarını kontrol et.'); },
       onUser: u => { signedIn = !!u; $('authBtn').textContent = u ? 'Çıkış (' + (u.displayName || u.email) + ')' : 'Giriş yap'; },
       onSongs: list => {
         songs = list; save();
@@ -31,7 +32,7 @@ async function init() {
         }
       }
     });
-    $('authBtn').onclick = () => (signedIn ? cloud.logout() : cloud.login());
+    $('authBtn').onclick = () => (signedIn ? cloud.logout() : cloud.login()).catch(e => alert('Giriş hatası: ' + (e.code || e.message)));
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 }

@@ -7,11 +7,12 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { firebaseConfig } from './firebase-config.js';
 
 export const enabled = !firebaseConfig.apiKey.startsWith('YOUR_');
-let auth, db, user = null, unsub = null;
+let auth, db, user = null, unsub = null, reportError = console.error;
 
 // onSongs(songsArray) -> bulut verisi değişince çağrılır; onUser(user|null) -> giriş durumu
-export function initCloud({ onSongs, onUser, getLocal }) {
+export function initCloud({ onSongs, onUser, getLocal, onError = console.error }) {
   if (!enabled) return;
+  reportError = onError;
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
@@ -28,7 +29,7 @@ export function initCloud({ onSongs, onUser, getLocal }) {
         getLocal().filter(s => !ids.has(s.id)).forEach(s => { pushSong(s); cloud.push(s); });
       }
       onSongs(cloud);
-    });
+    }, err => onError(err));
   });
 }
 export const login = () => signInWithPopup(auth, new GoogleAuthProvider());
@@ -36,8 +37,8 @@ export const logout = () => signOut(auth);
 export function pushSong(s) {
   if (!user) return;
   const { id, ...data } = s;
-  setDoc(doc(db, 'users', user.uid, 'songs', id), data);
+  setDoc(doc(db, 'users', user.uid, 'songs', id), data).catch(e => reportError(e));
 }
 export function removeSong(id) {
-  if (user) deleteDoc(doc(db, 'users', user.uid, 'songs', id));
+  if (user) deleteDoc(doc(db, 'users', user.uid, 'songs', id)).catch(e => reportError(e));
 }
