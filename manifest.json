@@ -1,0 +1,9 @@
+{
+  "name": "Akor Defteri",
+  "short_name": "Akorlar",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1e1e2e",
+  "theme_color": "#1e1e2e",
+  "icons": []
+}
