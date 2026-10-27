@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<title>Akor Dönüştürücü</title>
+</head>
+<body>
+<header><h1>Akor Dönüştürücü</h1><a href="index.html" style="color:var(--chord)">← Uygulama</a></header>
+<main>
+  <p>Akorların sözün üstünde yazılı olduğu metni yapıştır, köşeli parantezli hâli aşağıda çıksın.</p>
+  <textarea id="inp" wrap="off" spellcheck="false" placeholder="Düz metni buraya yapıştır..."></textarea>
+  <label class="row"><input type="checkbox" id="snap" style="width:auto;margin:0"> Akoru en yakın kelimenin başına çek (kelime ortasına koyma)</label>
+  <div class="row">
+    <button id="go">Dönüştür</button>
+    <button id="copy">Çıktıyı kopyala</button>
+  </div>
+  <textarea id="out" wrap="off" spellcheck="false" readonly placeholder="Çıktı burada görünecek..."></textarea>
+</main>
+<script>
+// Bir satırdaki tüm kelimeler akor ise "akor satırı" sayılır.
+const CHORD_RE = /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add)?\d*(?:\([^)]*\))?(?:sus\d|add\d+)?(?:\/[A-G][#b]?)?$/;
+const isChordLine = l => l.trim() !== '' && l.trim().split(/\s+/).every(x => CHORD_RE.test(x));
+
+function expandTabs(l) {
+  let o = ''; for (const ch of l) o += ch === '\t' ? ' '.repeat(8 - o.length % 8) : ch; return o;
+}
+
+function convert(text, snap) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n').map(expandTabs);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const chordLine = lines[i];
+    if (!isChordLine(chordLine)) { out.push(chordLine.trimEnd()); continue; }
+    const next = lines[i + 1];
+    // Altında söz yoksa (boş satır, bölüm başlığı veya başka akor satırı): sadece akorları yaz
+    if (next === undefined || next.trim() === '' || isChordLine(next)) {
+      out.push([...chordLine.matchAll(/\S+/g)].map(m => `[${m[0]}]`).join(' '));
+      continue;
+    }
+    const lyric = next.replace(/\s+$/, '');
+    let res = '', p = 0;
+    for (const m of chordLine.matchAll(/\S+/g)) {
+      let c = Math.min(m.index, lyric.length);
+      if (snap) { // kelime ortasındaysa kelime başına çek
+        while (c > p && lyric[c - 1] !== ' ' && lyric[c] !== ' ' && c < lyric.length) c--;
+      }
+      c = Math.max(c, p);
+      res += lyric.slice(p, c) + `[${m[0]}]`; p = c;
+    }
+    out.push(res + lyric.slice(p));
+    i++; // söz satırı işlendi
+  }
+  return out.join('\n');
+}
+
+document.getElementById('go').onclick = () => {
+  document.getElementById('out').value = convert(document.getElementById('inp').value, document.getElementById('snap').checked);
+};
+document.getElementById('copy').onclick = async () => {
+  const o = document.getElementById('out'); o.select();
+  try { await navigator.clipboard.writeText(o.value); } catch { document.execCommand('copy'); }
+};
+</script>
+</body>
+</html>
