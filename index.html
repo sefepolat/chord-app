@@ -1,57 +1,64 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1e1e2e">
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="style.css">
-<title>Akor Defteri</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1e1e2e">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <title>Akor Defteri</title>
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
 </head>
+
 <body>
-<header>
-  <button id="backBtn" hidden>←</button>
-  <h1 id="title">Akor Defteri</h1>
-  <div id="headerActions"><button id="authBtn" hidden>Giriş yap</button></div>
-</header>
+  <header>
+    <button id="backBtn" hidden>←</button>
+    <h1 id="title">Akor Defteri</h1>
+    <div id="headerActions"><button id="authBtn" hidden>Giriş yap</button></div>
+  </header>
 
-<main>
-  <section id="listView">
-    <input id="search" type="search" placeholder="Şarkı ara...">
-    <ul id="songList"></ul>
-    <div class="row">
-      <button id="newBtn">+ Yeni şarkı</button>
-      <button id="exportBtn">Dışa aktar</button>
-      <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json,.txt,text/plain" multiple hidden></label>
-    </div>
-  </section>
+  <main>
+    <section id="listView">
+      <input id="search" type="search" placeholder="Şarkı ara...">
+      <ul id="songList"></ul>
+      <div class="row">
+        <button id="newBtn">+ Yeni şarkı</button>
+        <button id="exportBtn">Dışa aktar</button>
+        <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json,.txt,text/plain" multiple
+            hidden></label>
+      </div>
+    </section>
 
-  <section id="viewView" hidden>
-    <div class="toolbar">
-      <button id="trDown">−</button>
-      <span id="trLabel">0</span>
-      <button id="trUp">+</button>
-      <button id="fontDown">A−</button>
-      <button id="fontUp">A+</button>
-      <button id="scrollBtn">▶ Kaydır</button>
-      <input id="speed" type="range" min="1" max="10" value="3" title="Hız">
-      <button id="editBtn">Düzenle</button>
-    </div>
-    <pre id="songBody"></pre>
-  </section>
+    <section id="viewView" hidden>
+      <div class="toolbar">
+        <button id="trDown">−</button>
+        <span id="trLabel">0</span>
+        <button id="trUp">+</button>
+        <button id="fontDown">A−</button>
+        <button id="fontUp">A+</button>
+        <button id="scrollBtn">▶ Kaydır</button>
+        <input id="speed" type="range" min="1" max="10" value="3" title="Hız">
+        <button id="editBtn">Düzenle</button>
+      </div>
+      <pre id="songBody"></pre>
+    </section>
 
-  <section id="editView" hidden>
-    <input id="eTitle" placeholder="Şarkı adı">
-    <input id="eArtist" placeholder="Sanatçı">
-    <textarea id="eBody" wrap="off" spellcheck="false" placeholder="Akorları köşeli parantezle yaz:
+    <section id="editView" hidden>
+      <input id="eTitle" placeholder="Şarkı adı">
+      <input id="eArtist" placeholder="Sanatçı">
+      <textarea id="eBody" wrap="off" spellcheck="false" placeholder="Akorları köşeli parantezle yaz:
 [Am]Sözler burada [G]başlar..."></textarea>
-    <label class="row"><input type="checkbox" id="eRaw" style="width:auto;margin:0"> Hizalı metin (akorlar sözün üstünde yazılı; köşeli parantez gerekmez)</label>
-    <div class="row">
-      <button id="saveBtn">Kaydet</button>
-      <button id="deleteBtn" class="danger">Sil</button>
-    </div>
-  </section>
-</main>
-<script type="module" src="app.js"></script>
+      <label class="row"><input type="checkbox" id="eRaw" style="width:auto;margin:0"> Hizalı metin (akorlar sözün
+        üstünde yazılı; köşeli parantez gerekmez)</label>
+      <div class="row">
+        <button id="saveBtn">Kaydet</button>
+        <button id="deleteBtn" class="danger">Sil</button>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
 </body>
+
 </html>
