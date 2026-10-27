@@ -1,4 +1,5 @@
-import * as cloud from './cloud.js';
+// Firebase yüklenemezse (dosya eksik, CDN erişilemiyor vb.) uygulama yerel modda çalışmaya devam eder.
+let cloud = { enabled: false, pushSong() {}, removeSong() {} };
 const $ = id => document.getElementById(id);
 const KEY = 'chord-songs-v1';
 let songs = JSON.parse(localStorage.getItem(KEY) || 'null');
@@ -14,6 +15,8 @@ async function init() {
     save();
   }
   renderList();
+  try { cloud = await import('./cloud.js'); }
+  catch (e) { console.error('Firebase yüklenemedi:', e); }
   if (cloud.enabled) {
     $('authBtn').hidden = false;
     cloud.initCloud({
