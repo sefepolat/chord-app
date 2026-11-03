@@ -7,38 +7,51 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { firebaseConfig } from './firebase-config.js';
 
 export const enabled = !firebaseConfig.apiKey.startsWith('YOUR_');
-let auth, db, user = null, unsub = null, reportError = console.error;
+let auth, db, user = null, unsubs = [], reportError = console.error;
 
-// onSongs(songsArray) -> bulut verisi değişince çağrılır; onUser(user|null) -> giriş durumu
-export function initCloud({ onSongs, onUser, getLocal, onError = console.error }) {
+// Her koleksiyon (songs, setlists) için: bulut verisi değişince onData(liste) çağrılır.
+// getLocal(): cihazdaki veriler; ilk eşitlemede bulutta olmayanlar yüklenir.
+export function initCloud({ onSongs, onSetlists, onUser, getLocalSongs, getLocalSetlists, onError = console.error }) {
   if (!enabled) return;
   reportError = onError;
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-  onAuthStateChanged(auth, u => {
-    user = u; onUser(u);
-    if (unsub) { unsub(); unsub = null; }
-    if (!u) return;
+
+  const listen = (name, getLocal, onData) => {
     let first = true;
-    unsub = onSnapshot(collection(db, 'users', u.uid, 'songs'), snap => {
+    return onSnapshot(collection(db, 'users', user.uid, name), snap => {
       const cloud = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      if (first) { // ilk eşitleme: bulutta olmayan yerel şarkıları yükle
+      if (first) { // ilk eşitleme: bulutta olmayan yerel kayıtları yükle
         first = false;
         const ids = new Set(cloud.map(s => s.id));
-        getLocal().filter(s => !ids.has(s.id)).forEach(s => { pushSong(s); cloud.push(s); });
+        getLocal().filter(s => !ids.has(s.id)).forEach(s => { push(name, s); cloud.push(s); });
       }
-      onSongs(cloud);
-    }, err => onError(err));
+      onData(cloud);
+    }, err => reportError(err));
+  };
+
+  onAuthStateChanged(auth, u => {
+    user = u; onUser(u);
+    unsubs.forEach(f => f()); unsubs = [];
+    if (!u) return;
+    unsubs.push(listen('songs', getLocalSongs, onSongs));
+    unsubs.push(listen('setlists', getLocalSetlists, onSetlists));
   });
 }
+
 export const login = () => signInWithPopup(auth, new GoogleAuthProvider());
 export const logout = () => signOut(auth);
-export function pushSong(s) {
+
+function push(name, item) {
   if (!user) return;
-  const { id, ...data } = s;
-  setDoc(doc(db, 'users', user.uid, 'songs', id), data).catch(e => reportError(e));
+  const { id, ...data } = item;
+  setDoc(doc(db, 'users', user.uid, name, id), data).catch(e => reportError(e));
 }
-export function removeSong(id) {
-  if (user) deleteDoc(doc(db, 'users', user.uid, 'songs', id)).catch(e => reportError(e));
+function remove(name, id) {
+  if (user) deleteDoc(doc(db, 'users', user.uid, name, id)).catch(e => reportError(e));
 }
+export const pushSong = s => push('songs', s);
+export const removeSong = id => remove('songs', id);
+export const pushSetlist = s => push('setlists', s);
+export const removeSetlist = id => remove('setlists', id);

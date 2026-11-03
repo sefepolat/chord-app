@@ -1,12 +1,20 @@
+import { transposeChord, isChordToken, isChordLine, isIgnorableToken, findFirstChord, keyPrefersFlats } from './chords.js';
+import { createMetronome } from './metronome.js';
+
 // Firebase yüklenemezse (dosya eksik, CDN erişilemiyor vb.) uygulama yerel modda çalışmaya devam eder.
-let cloud = { enabled: false, pushSong() {}, removeSong() {} };
+let cloud = { enabled: false, pushSong() {}, removeSong() {}, pushSetlist() {}, removeSetlist() {} };
 const $ = id => document.getElementById(id);
-const KEY = 'chord-songs-v1';
+const KEY = 'chord-songs-v1', SKEY = 'chord-setlists-v1';
 let songs = JSON.parse(localStorage.getItem(KEY) || 'null');
+let setlists = JSON.parse(localStorage.getItem(SKEY) || '[]');
 let current = null, transpose = 0, fontSize = 16, timer = null, signedIn = false;
+let tab = 'songs', view = 'listView', activeSet = null, setPos = -1, spell = false;
 
 const save = () => localStorage.setItem(KEY, JSON.stringify(songs));
+const saveSets = () => localStorage.setItem(SKEY, JSON.stringify(setlists));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const songById = id => songs.find(s => s.id === id);
 
 // İlk açılışta repodaki songs.json'u yükle
 async function init() {
@@ -20,15 +28,24 @@ async function init() {
   if (cloud.enabled) {
     $('authBtn').hidden = false;
     cloud.initCloud({
-      getLocal: () => songs,
+      getLocalSongs: () => songs,
+      getLocalSetlists: () => setlists,
       onError: e => { console.error(e); alert('Firebase hatası: ' + (e.code || e.message) + '\nFirestore kurallarını ve yetkili alan adlarını kontrol et.'); },
       onUser: u => { signedIn = !!u; $('authBtn').textContent = u ? 'Çıkış (' + (u.displayName || u.email) + ')' : 'Giriş yap'; },
       onSongs: list => {
         songs = list; save();
-        if (!$('listView').hidden) renderList();
-        else if (!$('viewView').hidden && current) {
-          const fresh = songs.find(s => s.id === current.id);
+        if (view === 'listView') renderList();
+        else if (view === 'viewView' && current) {
+          const fresh = songById(current.id);
           if (fresh) { current = fresh; draw(); }
+        }
+      },
+      onSetlists: list => {
+        setlists = list; saveSets();
+        if (view === 'listView') renderList();
+        else if (view === 'setView' && activeSet) {
+          activeSet = setlists.find(s => s.id === activeSet.id) || null;
+          activeSet ? renderSet() : renderList();
         }
       }
     });
@@ -37,104 +54,143 @@ async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 }
 
-// ---- Transpoze ----
-const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-function transChord(ch, n) {
-  return ch.replace(/[A-G][#b]?/g, m => {
-    let i = SHARP.indexOf(m); if (i < 0) i = FLAT.indexOf(m);
-    if (i < 0) return m;
-    const j = ((i + n) % 12 + 12) % 12;
-    return (m.includes('b') ? FLAT : SHARP)[j];
-  });
-}
-
 // ---- Render ----
-const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-// [Am]söz satırını: üstte akor satırı, altta söz satırı olacak şekilde çevir
-// Hizalı (akor satırı üstte, söz altta) düz metin için: akor satırlarını bulur, renklendirir ve
-// transpoze ederken sütun hizasını korur.
-const CHORD_RE = /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add)?\d*(?:\([^)]*\))?(?:sus\d|add\d+)?(?:\/[A-G][#b]?)?$/;
-const isChordLine = line => {
-  const t = line.trim().split(/\s+/);
-  return line.trim() !== '' && t.every(x => CHORD_RE.test(x));
-};
-function renderRaw(text, n) {
+// Bölüm başlığı: "[Nakarat]", "Nakarat", "Nakarat:", "Verse 2" (satırda başka bir şey olmamalı)
+const WORDS = 'Verse|Chorus|Bridge|Intro|Outro|Solo|Nakarat|Kıta|Giriş|Köprü';
+const SECTION_RE = new RegExp(`^\\s*(?:\\[(?:${WORDS})[^\\]]*\\]|(?:${WORDS})(?:\\s*\\d+)?\\s*:?)\\s*$`, 'i');
+const isSection = line => /^\s*\{.*\}\s*$/.test(line) || SECTION_RE.test(line);
+const tc = tok => transposeChord(tok, transpose, spell);
+const chordSpan = c => `<span class="chord">${esc(c)}</span>`;
+
+// Hizalı (akor satırı üstte, söz altta) düz metin: yerleşimi koruyarak akorları renklendirir/transpoze eder.
+function renderRaw(text) {
   return text.split('\n').map(line => {
+    if (SECTION_RE.test(line)) return `<span class="sec">${esc(line)}</span>`;
     if (!isChordLine(line)) return esc(line);
     let out = '', len = 0;
     for (const m of line.matchAll(/\S+/g)) {
       let pad = m.index - len;
       if (pad < 1 && len > 0) pad = 1;
       pad = Math.max(pad, 0);
-      const c = transChord(m[0], n);
-      out += ' '.repeat(pad) + `<span class="chord">${esc(c)}</span>`;
-      len += pad + c.length;
+      const chord = isChordToken(m[0]);
+      const t = chord ? tc(m[0]) : m[0];
+      out += ' '.repeat(pad) + (chord ? chordSpan(t) : esc(t));
+      len += pad + t.length;
     }
     return out;
   }).join('\n');
 }
-function renderBody(text, n, raw) {
-  if (raw) return renderRaw(text, n); // hizalı metin: yerleşimi değiştirmeden göster
+
+// [Am]söz biçimi: üstte akor satırı, altta söz satırı
+function renderBracket(text) {
   return text.split('\n').map(line => {
-    if (/^\s*\{.*\}\s*$/.test(line) || /^\s*(\[?(Verse|Chorus|Bridge|Intro|Solo|Nakarat|Kıta)[^\]]*\]?:?)\s*$/i.test(line))
-      return `<span class="sec">${esc(line.replace(/[{}]/g, ''))}</span>`;
+    if (isSection(line)) return `<span class="sec">${esc(line.replace(/[{}]/g, ''))}</span>`;
     if (!/\[[^\]]+\]/.test(line)) return esc(line);
+    const parts = line.split(/(\[[^\]]+\])/);
     // Satırda sadece akor + boşluk varsa (söz yok): tek satır olarak, sütunları koruyarak yaz
     if (line.replace(/\[[^\]]+\]/g, '').trim() === '')
-      return line.replace(/\[([^\]]+)\]/g, (_, c) => ` <span class="chord">${esc(transChord(c, n))}</span> `);
-    return buildTwoLines(line.split(/(\[[^\]]+\])/), n);
+      return line.replace(/\[([^\]]+)\]/g, (_, c) => ` ${chordSpan(isChordToken(c) ? tc(c) : c)} `);
+    return buildTwoLines(parts);
   }).join('\n');
 }
-function buildTwoLines(parts, n) {
+function buildTwoLines(parts) {
   let chordLine = '', plain = 0, lyric = '', chordPlain = 0;
   for (const p of parts) {
     const m = p.match(/^\[([^\]]+)\]$/);
     if (m) {
-      const c = transChord(m[1], n);
+      const c = isChordToken(m[1]) ? tc(m[1]) : m[1];
       if (chordPlain < plain) { chordLine += ' '.repeat(plain - chordPlain); chordPlain = plain; }
       else if (chordPlain > 0 && chordPlain >= plain) { chordLine += ' '; chordPlain++; }
-      chordLine += `<span class="chord">${esc(c)}</span>`;
+      chordLine += chordSpan(c);
       chordPlain += c.length;
     } else { lyric += p; plain += p.length; }
   }
   return chordLine + '\n' + esc(lyric);
 }
+const renderBody = (text, raw) => raw ? renderRaw(text) : renderBracket(text);
 
 // ---- Görünümler ----
-function show(v) {
-  for (const id of ['listView','viewView','editView']) $(id).hidden = id !== v;
-  $('backBtn').hidden = v === 'listView';
-  if (v !== 'viewView') stopScroll();
+let wakeLock = null;
+async function setWake(on) {
+  try {
+    if (on && !wakeLock && 'wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { /* desteklenmiyorsa sessizce geç */ }
 }
+document.addEventListener('visibilitychange', () => { if (view === 'viewView' && !document.hidden) setWake(true); });
+
+function show(v) {
+  view = v;
+  for (const id of ['listView', 'setView', 'viewView', 'editView']) $(id).hidden = id !== v;
+  $('backBtn').hidden = v === 'listView';
+  if (v !== 'viewView') { stopScroll(); metroStop(); setWake(false); if (stage) exitStage(); }
+  else setWake(true);
+  window.scrollTo(0, 0);
+}
+
 function renderList() {
-  const q = $('search').value.toLowerCase();
-  $('songList').innerHTML = '';
-  songs.filter(s => (s.title + s.artist).toLowerCase().includes(q))
-    .sort((a, b) => a.title.localeCompare(b.title, 'tr'))
-    .forEach(s => {
+  activeSet = null; setPos = -1;
+  $('songsBar').hidden = tab !== 'songs';
+  $('setsBar').hidden = tab !== 'sets';
+  $('songList').hidden = tab !== 'songs';
+  $('setList').hidden = tab !== 'sets';
+  $('tabSongs').classList.toggle('active', tab === 'songs');
+  $('tabSets').classList.toggle('active', tab === 'sets');
+  if (tab === 'songs') {
+    const q = $('search').value.toLowerCase();
+    $('songList').innerHTML = '';
+    songs.filter(s => ((s.title || '') + (s.artist || '')).toLowerCase().includes(q))
+      .sort((a, b) => a.title.localeCompare(b.title, 'tr'))
+      .forEach(s => {
+        const li = document.createElement('li');
+        li.innerHTML = `${esc(s.title)}<small>${esc(s.artist || '')}</small>`;
+        li.onclick = () => { activeSet = null; setPos = -1; openSong(s.id); };
+        $('songList').appendChild(li);
+      });
+  } else {
+    $('setList').innerHTML = '';
+    if (!setlists.length) $('setList').innerHTML = '<li style="cursor:default;opacity:.7">Henüz setlist yok.</li>';
+    [...setlists].sort((a, b) => a.name.localeCompare(b.name, 'tr')).forEach(sl => {
       const li = document.createElement('li');
-      li.innerHTML = `${esc(s.title)}<small>${esc(s.artist || '')}</small>`;
-      li.onclick = () => openSong(s.id);
-      $('songList').appendChild(li);
+      li.innerHTML = `${esc(sl.name)}<small>${sl.songIds.length} şarkı</small>`;
+      li.onclick = () => openSet(sl.id);
+      $('setList').appendChild(li);
     });
+  }
   $('title').textContent = 'Akor Defteri';
   show('listView');
 }
+
 function openSong(id) {
-  current = songs.find(s => s.id === id);
-  transpose = 0; draw(); show('viewView');
+  const s = songById(id);
+  if (!s) return renderList();
+  current = s; transpose = 0;
+  draw(); show('viewView');
   $('title').textContent = current.title;
+  $('bpmInput').value = metro.setBpm(current.bpm || 100);
+  updateSetNav();
 }
+
 function draw() {
-  $('songBody').innerHTML = renderBody(current.body, transpose, current.raw);
-  $('songBody').style.fontSize = fontSize + 'px';
+  const first = findFirstChord(current.body);
+  spell = transpose && first ? keyPrefersFlats(first, transpose) : false;
+  $('songBody').innerHTML = renderBody(current.body, current.raw);
+  $('songBody').style.fontSize = (stage ? fontSize + 8 : fontSize) + 'px';
   $('trLabel').textContent = (transpose > 0 ? '+' : '') + transpose;
 }
+
 function stopScroll() { clearInterval(timer); timer = null; $('scrollBtn').textContent = '▶ Kaydır'; }
 
 $('search').oninput = renderList;
-$('backBtn').onclick = renderList;
+$('tabSongs').onclick = () => { tab = 'songs'; renderList(); };
+$('tabSets').onclick = () => { tab = 'sets'; renderList(); };
+$('backBtn').onclick = () => {
+  if (view === 'viewView') return activeSet ? openSet(activeSet.id) : renderList();
+  if (view === 'editView') return current ? openSong(current.id) : renderList();
+  renderList();
+};
 $('trUp').onclick = () => { transpose++; draw(); };
 $('trDown').onclick = () => { transpose--; draw(); };
 $('fontUp').onclick = () => { fontSize += 2; draw(); };
@@ -148,10 +204,12 @@ $('speed').oninput = () => { if (timer) { stopScroll(); $('scrollBtn').click(); 
 $('editBtn').onclick = () => edit(current);
 $('newBtn').onclick = () => edit(null);
 
+// ---- Şarkı düzenleme ----
 function edit(s) {
   current = s;
   $('eTitle').value = s ? s.title : '';
   $('eArtist').value = s ? s.artist : '';
+  $('eBpm').value = s && s.bpm ? s.bpm : '';
   $('eBody').value = s ? s.body : '';
   $('eRaw').checked = s ? !!s.raw : true;
   $('deleteBtn').hidden = !s;
@@ -159,20 +217,182 @@ function edit(s) {
 }
 $('saveBtn').onclick = () => {
   const title = $('eTitle').value.trim() || 'Adsız';
+  const bpm = parseInt($('eBpm').value, 10);
   const data = { title, artist: $('eArtist').value.trim(), body: $('eBody').value, raw: $('eRaw').checked };
-  if (current) Object.assign(current, data);
+  if (current) current = songById(current.id) || current; // bulut eşitlemesi nesneyi yenilemiş olabilir
+  if (bpm) data.bpm = bpm; else if (current) delete current.bpm;
+  if (current) { Object.assign(current, data); if (!songById(current.id)) songs.push(current); }
   else { current = { id: uid(), ...data }; songs.push(current); }
   save(); cloud.pushSong(current); openSong(current.id);
 };
 $('deleteBtn').onclick = () => {
   if (!confirm('Silinsin mi?')) return;
-  const id = current.id; songs = songs.filter(s => s !== current); save(); cloud.removeSong(id); renderList();
+  const id = current.id;
+  songs = songs.filter(s => s.id !== id); save(); cloud.removeSong(id);
+  // setlistlerden de çıkar
+  setlists.forEach(sl => {
+    if (sl.songIds.includes(id)) { sl.songIds = sl.songIds.filter(x => x !== id); cloud.pushSetlist(sl); }
+  });
+  saveSets(); current = null; renderList();
 };
 
+// ---- Setlist ----
+function openSet(id) {
+  activeSet = setlists.find(s => s.id === id);
+  if (!activeSet) return renderList();
+  setPos = -1;
+  $('picker').hidden = true;
+  renderSet(); show('setView');
+}
+function renderSet() {
+  $('title').textContent = activeSet.name;
+  // silinmiş şarkıları listeden temizle
+  const ids = activeSet.songIds.filter(songById);
+  if (ids.length !== activeSet.songIds.length) { activeSet.songIds = ids; commitSet(); }
+  const ul = $('setSongs'); ul.innerHTML = '';
+  if (!ids.length) ul.innerHTML = '<li style="cursor:default;opacity:.7">Bu setlist boş. "+ Şarkı ekle" ile şarkı ekle.</li>';
+  ids.forEach((sid, i) => {
+    const s = songById(sid);
+    const li = document.createElement('li'); li.className = 'setitem';
+    li.innerHTML = `<span class="num">${i + 1}.</span><span class="name">${esc(s.title)}<small>${esc(s.artist || '')}</small></span>`;
+    const mk = (label, fn, dis) => {
+      const b = document.createElement('button'); b.textContent = label; b.disabled = !!dis;
+      b.onclick = e => { e.stopPropagation(); fn(); }; li.appendChild(b);
+    };
+    mk('▲', () => moveInSet(i, -1), i === 0);
+    mk('▼', () => moveInSet(i, 1), i === ids.length - 1);
+    mk('✕', () => { activeSet.songIds.splice(i, 1); commitSet(); renderSet(); });
+    li.onclick = () => { setPos = i; openSong(sid); };
+    ul.appendChild(li);
+  });
+  if (!$('picker').hidden) renderPicker();
+}
+function commitSet() { saveSets(); cloud.pushSetlist(activeSet); }
+function moveInSet(i, d) {
+  const a = activeSet.songIds; [a[i], a[i + d]] = [a[i + d], a[i]];
+  commitSet(); renderSet();
+}
+function renderPicker() {
+  const q = $('pickSearch').value.toLowerCase();
+  const ul = $('pickList'); ul.innerHTML = '';
+  songs.filter(s => !activeSet.songIds.includes(s.id) && ((s.title || '') + (s.artist || '')).toLowerCase().includes(q))
+    .sort((a, b) => a.title.localeCompare(b.title, 'tr'))
+    .forEach(s => {
+      const li = document.createElement('li');
+      li.innerHTML = `+ ${esc(s.title)}<small>${esc(s.artist || '')}</small>`;
+      li.onclick = () => { activeSet.songIds.push(s.id); commitSet(); renderSet(); };
+      ul.appendChild(li);
+    });
+}
+$('newSetBtn').onclick = () => {
+  const name = (prompt('Setlist adı:') || '').trim();
+  if (!name) return;
+  const sl = { id: uid(), name, songIds: [] };
+  setlists.push(sl); saveSets(); cloud.pushSetlist(sl); openSet(sl.id);
+};
+$('setAdd').onclick = () => { $('picker').hidden = !$('picker').hidden; if (!$('picker').hidden) { $('pickSearch').value = ''; renderPicker(); } };
+$('pickSearch').oninput = renderPicker;
+$('setRename').onclick = () => {
+  const name = (prompt('Yeni ad:', activeSet.name) || '').trim();
+  if (name) { activeSet.name = name; commitSet(); renderSet(); }
+};
+$('setDelete').onclick = () => {
+  if (!confirm('Setlist silinsin mi? (Şarkılar silinmez)')) return;
+  const id = activeSet.id;
+  setlists = setlists.filter(s => s.id !== id); saveSets(); cloud.removeSetlist(id); renderList();
+};
+$('setStart').onclick = () => {
+  if (activeSet.songIds.length) { setPos = 0; openSong(activeSet.songIds[0]); }
+};
+function updateSetNav() {
+  const on = activeSet && setPos >= 0;
+  $('setNav').hidden = !on;
+  if (!on) return;
+  $('setPos').textContent = `${setPos + 1} / ${activeSet.songIds.length}`;
+  $('setPrev').disabled = setPos <= 0;
+  $('setNext').disabled = setPos >= activeSet.songIds.length - 1;
+}
+function gotoSet(d) {
+  if (!activeSet || setPos < 0) return;
+  const p = setPos + d;
+  if (p < 0 || p >= activeSet.songIds.length) return;
+  setPos = p; openSong(activeSet.songIds[p]);
+}
+$('setPrev').onclick = () => gotoSet(-1);
+$('setNext').onclick = () => gotoSet(1);
+document.addEventListener('keydown', e => {
+  if (view !== 'viewView' || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') gotoSet(1);
+  if (e.key === 'ArrowLeft') gotoSet(-1);
+});
+
+// ---- Sahne modu ----
+let stage = false;
+function enterStage() {
+  stage = true; document.body.classList.add('stage');
+  $('stageBtn').textContent = 'Çık'; $('stageExit').hidden = false;
+  if (fontSize < 20) fontSize = 20; // sahnede daha büyük başla
+  draw(); window.scrollTo(0, 0);
+  try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch { /* yok say */ }
+}
+function exitStage() {
+  stage = false; document.body.classList.remove('stage');
+  $('stageBtn').textContent = 'Sahne'; $('stageExit').hidden = true;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (current && view === 'viewView') draw();
+}
+$('stageBtn').onclick = () => (stage ? exitStage() : enterStage());
+$('stageExit').onclick = exitStage;
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && stage) exitStage(); });
+// Sahnede sağa/sola kaydırarak setlistte şarkı değiştir
+let touchX = 0, touchY = 0;
+document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchend', e => {
+  if (!stage || view !== 'viewView') return;
+  const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+  if (Math.abs(dx) > 90 && Math.abs(dy) < 60) gotoSet(dx < 0 ? 1 : -1);
+}, { passive: true });
+
+// ---- Metronom ----
+const metro = createMetronome();
+let bpmSaveTimer = null;
+function renderDots() {
+  const n = parseInt($('beatsSel').value, 10);
+  $('beatDots').innerHTML = Array.from({ length: n }, (_, i) => `<span class="dot${i === 0 ? ' accent' : ''}"></span>`).join('');
+}
+function metroStop() {
+  if (!metro.isRunning()) return;
+  metro.stop(); $('metroPlay').textContent = '▶';
+  $('beatDots').querySelectorAll('.dot').forEach(d => d.classList.remove('on'));
+}
+metro.onBeat = i => {
+  const dots = $('beatDots').children;
+  [...dots].forEach((d, k) => d.classList.toggle('on', k === i));
+};
+function setBpm(v) {
+  const b = metro.setBpm(v); $('bpmInput').value = b;
+  if (current) { // şarkıya kaydet (kısa gecikmeyle)
+    current.bpm = b; clearTimeout(bpmSaveTimer);
+    bpmSaveTimer = setTimeout(() => { save(); cloud.pushSong(current); }, 800);
+  }
+}
+$('metroBtn').onclick = () => {
+  $('metroPanel').hidden = !$('metroPanel').hidden;
+  if ($('metroPanel').hidden) metroStop(); else renderDots();
+};
+$('metroPlay').onclick = () => { $('metroPlay').textContent = metro.toggle() ? '■' : '▶'; if (!metro.isRunning()) metroStop(); };
+$('bpmDown').onclick = () => setBpm(metro.getBpm() - 1);
+$('bpmUp').onclick = () => setBpm(metro.getBpm() + 1);
+$('bpmInput').onchange = () => setBpm(parseInt($('bpmInput').value, 10));
+$('tapBtn').onclick = () => { const b = metro.tap(); if (b) setBpm(b); };
+$('beatsSel').onchange = () => { metro.setBeats(parseInt($('beatsSel').value, 10)); renderDots(); };
+renderDots();
+
+// ---- Yedek: dışa/içe aktarma ----
 $('exportBtn').onclick = () => {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(songs, null, 2)], { type: 'application/json' }));
-  a.download = 'songs.json'; a.click();
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ version: 2, songs, setlists }, null, 2)], { type: 'application/json' }));
+  a.download = 'akor-defteri-yedek.json'; a.click();
 };
 $('importFile').onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
@@ -180,8 +400,15 @@ $('importFile').onchange = async e => {
   try {
     for (const f of files) {
       const text = await f.text();
-      if (/\.json$/i.test(f.name)) { // yedek dosyası
-        JSON.parse(text).forEach(s => { addSong({ ...s, id: s.id || uid() }); added++; });
+      if (/\.json$/i.test(f.name)) { // yedek dosyası (eski biçim: sadece şarkı dizisi)
+        const data = JSON.parse(text);
+        const list = Array.isArray(data) ? data : (data.songs || []);
+        list.forEach(s => { addSong({ ...s, id: s.id || uid() }); added++; });
+        (data.setlists || []).forEach(sl => {
+          const i = setlists.findIndex(x => x.id === sl.id);
+          if (i >= 0) setlists[i] = sl; else setlists.push(sl);
+          cloud.pushSetlist(sl);
+        });
       } else { // düz metin (.txt): dosya adı = şarkı adı, hizalı metin olarak eklenir
         const body = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
           .split('\n').map(l => { // sekmeleri 8'lik duraklarla boşluğa çevir
@@ -193,7 +420,7 @@ $('importFile').onchange = async e => {
         added++;
       }
     }
-    save(); renderList();
+    save(); saveSets(); renderList();
     alert(added + ' şarkı eklendi.');
   } catch { alert('Geçersiz dosya'); }
   e.target.value = '';

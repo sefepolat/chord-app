@@ -18,10 +18,8 @@
   </div>
   <textarea id="out" wrap="off" spellcheck="false" readonly placeholder="Çıktı burada görünecek..."></textarea>
 </main>
-<script>
-// Bir satırdaki tüm kelimeler akor ise "akor satırı" sayılır.
-const CHORD_RE = /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add)?\d*(?:\([^)]*\))?(?:sus\d|add\d+)?(?:\/[A-G][#b]?)?$/;
-const isChordLine = l => l.trim() !== '' && l.trim().split(/\s+/).every(x => CHORD_RE.test(x));
+<script type="module">
+import { isChordLine, isChordToken } from './chords.js';
 
 function expandTabs(l) {
   let o = ''; for (const ch of l) o += ch === '\t' ? ' '.repeat(8 - o.length % 8) : ch; return o;
@@ -36,12 +34,13 @@ function convert(text, snap) {
     const next = lines[i + 1];
     // Altında söz yoksa (boş satır, bölüm başlığı veya başka akor satırı): sadece akorları yaz
     if (next === undefined || next.trim() === '' || isChordLine(next)) {
-      out.push([...chordLine.matchAll(/\S+/g)].map(m => `[${m[0]}]`).join(' '));
+      out.push([...chordLine.matchAll(/\S+/g)].map(m => isChordToken(m[0]) ? `[${m[0]}]` : m[0]).join(' '));
       continue;
     }
     const lyric = next.replace(/\s+$/, '');
-    let res = '', p = 0;
+    let res = '', p = 0, extras = [];
     for (const m of chordLine.matchAll(/\S+/g)) {
+      if (!isChordToken(m[0])) { extras.push(m[0]); continue; } // |, x2 gibi işaretler satır sonuna
       let c = Math.min(m.index, lyric.length);
       if (snap) { // kelime ortasındaysa kelime başına çek
         while (c > p && lyric[c - 1] !== ' ' && lyric[c] !== ' ' && c < lyric.length) c--;
@@ -49,7 +48,7 @@ function convert(text, snap) {
       c = Math.max(c, p);
       res += lyric.slice(p, c) + `[${m[0]}]`; p = c;
     }
-    out.push(res + lyric.slice(p));
+    out.push(res + lyric.slice(p) + (extras.length ? '  ' + extras.join(' ') : ''));
     i++; // söz satırı işlendi
   }
   return out.join('\n');

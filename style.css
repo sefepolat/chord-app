@@ -1,10 +1,11 @@
-:root{--bg:#1e1e2e;--fg:#cdd6f4;--card:#313244;--accent:#f9e2af;--chord:#89b4fa}
+:root{--bg:#1e1e2e;--fg:#cdd6f4;--card:#313244;--accent:#f9e2af;--chord:#89b4fa;--primary:#89b4fa}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#11111b;position:sticky;top:0;z-index:2}
+header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#11111b;position:sticky;top:0;z-index:3;height:56px}
 header h1{font-size:1.1rem;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main{max-width:800px;margin:auto;padding:12px}
-button,.btn{background:var(--card);color:var(--fg);border:0;border-radius:8px;padding:10px 14px;font-size:1rem;cursor:pointer;display:inline-block}
+button,.btn,select{background:var(--card);color:var(--fg);border:0;border-radius:8px;padding:10px 14px;font-size:1rem;cursor:pointer;display:inline-block}
+button.primary{background:var(--primary);color:#11111b;font-weight:bold}
 button.danger{background:#f38ba8;color:#11111b}
 input,textarea{width:100%;background:var(--card);color:var(--fg);border:0;border-radius:8px;padding:10px;font-size:1rem;margin-bottom:8px}
 textarea{height:60vh;font-family:Consolas,"Courier New",Menlo,monospace;white-space:pre;overflow:auto;tab-size:8}
@@ -12,8 +13,48 @@ ul{list-style:none;padding:0}
 li{background:var(--card);padding:12px;border-radius:8px;margin-bottom:6px;cursor:pointer}
 li small{opacity:.6;display:block}
 .row,.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
-.toolbar{position:sticky;top:52px;background:var(--bg);padding:6px 0;z-index:1}
+.toolbar{position:sticky;top:56px;background:var(--bg);padding:6px 0;z-index:2}
 pre{font-family:Consolas,"Courier New",Menlo,monospace;font-size:16px;line-height:1.35;white-space:pre;overflow-x:auto;tab-size:8;font-variant-ligatures:none;-webkit-text-size-adjust:100%}
 .chord{color:var(--chord);font-weight:bold}
 .sec{color:var(--accent);font-weight:bold}
 [hidden]{display:none!important}
+
+/* Üstte sabit çubuk: sekmeler + "Yeni şarkı" + arama */
+.sticky-bar{position:sticky;top:56px;background:var(--bg);z-index:2;padding:6px 0 2px;margin-top:-6px}
+.sticky-bar .row{margin:4px 0;flex-wrap:nowrap}
+.sticky-bar .row input{margin:0;flex:1;min-width:0}
+.sticky-bar .row button{white-space:nowrap}
+.tabs{display:flex;gap:6px}
+.tab{flex:1;background:transparent;border-bottom:3px solid transparent;border-radius:0;padding:8px}
+.tab.active{border-bottom-color:var(--primary);color:var(--primary);font-weight:bold}
+details{margin:16px 0;opacity:.85}
+summary{cursor:pointer;padding:6px 0}
+
+/* Setlist */
+li.setitem{display:flex;align-items:center;gap:8px}
+li.setitem .name{flex:1;min-width:0}
+li.setitem .num{opacity:.6;min-width:1.6em}
+li.setitem button{padding:6px 10px}
+.setnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.setnav span{opacity:.8}
+
+/* Metronom */
+.metro{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);padding:8px;border-radius:10px;margin-bottom:8px}
+.metro input{width:76px;text-align:center;margin:0;background:#11111b}
+.dots{display:flex;gap:6px}
+.dot{width:14px;height:14px;border-radius:50%;background:#45475a}
+.dot.on{background:var(--accent)}
+.dot.accent.on{background:#f38ba8}
+
+/* Sahne modu: tam ekran, büyük yazı, yüksek kontrast */
+body.stage{background:#000}
+body.stage header{display:none}
+body.stage main{max-width:none;padding:8px 14px 150px}
+body.stage pre{font-size:26px;line-height:1.4}
+body.stage .chord{color:#ffd24a}
+body.stage .toolbar{position:fixed;left:0;right:0;bottom:0;top:auto;background:#000d;padding:8px;margin:0;z-index:5;justify-content:center}
+body.stage #editBtn{display:none}
+body.stage .metro{position:fixed;left:8px;right:8px;bottom:64px;z-index:5;margin:0}
+body.stage .setnav{position:fixed;left:8px;right:64px;top:8px;z-index:5;background:#000c;padding:4px 8px;border-radius:10px}
+#stageExit{position:fixed;top:8px;right:8px;z-index:6;opacity:.7;padding:10px 14px}
+body.stage #viewView{padding-top:52px}

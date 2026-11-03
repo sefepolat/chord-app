@@ -20,18 +20,56 @@
   </header>
 
   <main>
+    <!-- Ana liste: üstteki çubuk kaydırınca da sabit kalır -->
     <section id="listView">
-      <input id="search" type="search" placeholder="Şarkı ara...">
-      <ul id="songList"></ul>
-      <div class="row">
-        <button id="newBtn">+ Yeni şarkı</button>
-        <button id="exportBtn">Dışa aktar</button>
-        <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json,.txt,text/plain" multiple
-            hidden></label>
+      <div class="sticky-bar">
+        <div class="tabs">
+          <button id="tabSongs" class="tab active">Şarkılar</button>
+          <button id="tabSets" class="tab">Setlistler</button>
+        </div>
+        <div id="songsBar">
+          <div class="row">
+            <button id="newBtn" class="primary">+ Yeni şarkı</button>
+            <input id="search" type="search" placeholder="Şarkı ara...">
+          </div>
+        </div>
+        <div id="setsBar" hidden>
+          <div class="row"><button id="newSetBtn" class="primary">+ Yeni setlist</button></div>
+        </div>
       </div>
+      <ul id="songList"></ul>
+      <ul id="setList" hidden></ul>
+      <details id="backupBox">
+        <summary>Yedekle / içe aktar</summary>
+        <div class="row">
+          <button id="exportBtn">Dışa aktar</button>
+          <label class="btn">İçe aktar<input id="importFile" type="file" accept=".json,.txt,text/plain" multiple
+              hidden></label>
+        </div>
+      </details>
+    </section>
+
+    <!-- Setlist ayrıntısı -->
+    <section id="setView" hidden>
+      <div class="row">
+        <button id="setStart" class="primary">▶ Başlat</button>
+        <button id="setAdd">+ Şarkı ekle</button>
+        <button id="setRename">Adı değiştir</button>
+        <button id="setDelete" class="danger">Sil</button>
+      </div>
+      <div id="picker" hidden>
+        <input id="pickSearch" type="search" placeholder="Eklenecek şarkıyı ara...">
+        <ul id="pickList"></ul>
+      </div>
+      <ul id="setSongs"></ul>
     </section>
 
     <section id="viewView" hidden>
+      <div id="setNav" class="setnav" hidden>
+        <button id="setPrev">◀</button>
+        <span id="setPos"></span>
+        <button id="setNext">▶</button>
+      </div>
       <div class="toolbar">
         <button id="trDown">−</button>
         <span id="trLabel">0</span>
@@ -40,7 +78,23 @@
         <button id="fontUp">A+</button>
         <button id="scrollBtn">▶ Kaydır</button>
         <input id="speed" type="range" min="1" max="10" value="3" title="Hız">
+        <button id="metroBtn">🥁</button>
+        <button id="stageBtn">Sahne</button>
         <button id="editBtn">Düzenle</button>
+      </div>
+      <div id="metroPanel" class="metro" hidden>
+        <button id="bpmDown">−</button>
+        <input id="bpmInput" type="number" min="30" max="300" value="100" inputmode="numeric">
+        <button id="bpmUp">+</button>
+        <button id="metroPlay" class="primary">▶</button>
+        <button id="tapBtn">Tap</button>
+        <select id="beatsSel" title="Ölçü">
+          <option value="2">2/4</option>
+          <option value="3">3/4</option>
+          <option value="4" selected>4/4</option>
+          <option value="6">6/8</option>
+        </select>
+        <span id="beatDots" class="dots"></span>
       </div>
       <pre id="songBody"></pre>
     </section>
@@ -48,16 +102,19 @@
     <section id="editView" hidden>
       <input id="eTitle" placeholder="Şarkı adı">
       <input id="eArtist" placeholder="Sanatçı">
+      <input id="eBpm" type="number" min="30" max="300" placeholder="BPM (isteğe bağlı)" inputmode="numeric">
       <textarea id="eBody" wrap="off" spellcheck="false" placeholder="Akorları köşeli parantezle yaz:
 [Am]Sözler burada [G]başlar..."></textarea>
       <label class="row"><input type="checkbox" id="eRaw" style="width:auto;margin:0"> Hizalı metin (akorlar sözün
         üstünde yazılı; köşeli parantez gerekmez)</label>
       <div class="row">
-        <button id="saveBtn">Kaydet</button>
+        <button id="saveBtn" class="primary">Kaydet</button>
         <button id="deleteBtn" class="danger">Sil</button>
       </div>
     </section>
   </main>
+
+  <button id="stageExit" hidden>✕</button>
   <script type="module" src="app.js"></script>
 </body>
 
