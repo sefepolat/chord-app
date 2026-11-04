@@ -1,4 +1,4 @@
-const C = 'chords-v9';
+const C = 'chords-v10';
 const FILES = ['./', 'index.html', 'app.js', 'chords.js', 'metronome.js', 'cloud.js', 'firebase-config.js', 'style.css',
   'songs.json', 'manifest.json', 'convert.html', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(FILES))));

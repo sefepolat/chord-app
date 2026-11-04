@@ -9,6 +9,7 @@ let songs = JSON.parse(localStorage.getItem(KEY) || 'null');
 let setlists = JSON.parse(localStorage.getItem(SKEY) || '[]');
 let current = null, transpose = 0, fontSize = 16, timer = null, signedIn = false;
 let tab = 'songs', view = 'listView', activeSet = null, setPos = -1, spell = false;
+let twoCol = localStorage.getItem('chord-cols') === '1'; // iki sütun ayarı cihazda hatırlanır
 
 const save = () => localStorage.setItem(KEY, JSON.stringify(songs));
 const saveSets = () => localStorage.setItem(SKEY, JSON.stringify(setlists));
@@ -63,10 +64,10 @@ const tc = tok => transposeChord(tok, transpose, spell);
 const chordSpan = c => `<span class="chord">${esc(c)}</span>`;
 
 // Hizalı (akor satırı üstte, söz altta) düz metin: yerleşimi koruyarak akorları renklendirir/transpoze eder.
+// Not: render fonksiyonları "birim" dizisi döndürür. Birim = tek satır ya da akor satırı + altındaki söz satırı.
+// Tek sütunda birimler '\n' ile birleştirilir; iki sütunda her birim bölünmez bir blok olur.
 function renderRaw(text) {
-  return text.split('\n').map(line => {
-    if (SECTION_RE.test(line)) return `<span class="sec">${esc(line)}</span>`;
-    if (!isChordLine(line)) return esc(line);
+  const fmt = line => {
     let out = '', len = 0;
     for (const m of line.matchAll(/\S+/g)) {
       let pad = m.index - len;
@@ -78,7 +79,18 @@ function renderRaw(text) {
       len += pad + t.length;
     }
     return out;
-  }).join('\n');
+  };
+  const lines = text.split('\n'), units = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (SECTION_RE.test(line)) { units.push(`<span class="sec">${esc(line)}</span>`); continue; }
+    if (!isChordLine(line)) { units.push(esc(line)); continue; }
+    const next = lines[i + 1];
+    if (next !== undefined && next.trim() !== '' && !isChordLine(next) && !SECTION_RE.test(next)) {
+      units.push(fmt(line) + '\n' + esc(next)); i++; // akor satırı ve sözü birlikte kalsın
+    } else units.push(fmt(line));
+  }
+  return units;
 }
 
 // [Am]söz biçimi: üstte akor satırı, altta söz satırı
@@ -91,7 +103,7 @@ function renderBracket(text) {
     if (line.replace(/\[[^\]]+\]/g, '').trim() === '')
       return line.replace(/\[([^\]]+)\]/g, (_, c) => ` ${chordSpan(isChordToken(c) ? tc(c) : c)} `);
     return buildTwoLines(parts);
-  }).join('\n');
+  });
 }
 function buildTwoLines(parts) {
   let chordLine = '', plain = 0, lyric = '', chordPlain = 0;
@@ -176,7 +188,13 @@ function openSong(id) {
 function draw() {
   const first = findFirstChord(current.body);
   spell = transpose && first ? keyPrefersFlats(first, transpose) : false;
-  $('songBody').innerHTML = renderBody(current.body, current.raw);
+  const units = renderBody(current.body, current.raw);
+  $('songBody').innerHTML = twoCol
+    ? units.map(u => `<div class="u">${u || ' '}</div>`).join('')
+    : units.join('\n');
+  $('songBody').classList.toggle('cols', twoCol);
+  document.body.classList.toggle('twocol', twoCol);
+  $('colBtn').classList.toggle('on', twoCol);
   $('songBody').style.fontSize = (stage ? fontSize + 8 : fontSize) + 'px';
   $('trLabel').textContent = (transpose > 0 ? '+' : '') + transpose;
 }
@@ -201,6 +219,10 @@ $('scrollBtn').onclick = () => {
   timer = setInterval(() => window.scrollBy(0, 1), 120 / $('speed').value * 2);
 };
 $('speed').oninput = () => { if (timer) { stopScroll(); $('scrollBtn').click(); } };
+$('colBtn').onclick = () => {
+  twoCol = !twoCol; localStorage.setItem('chord-cols', twoCol ? '1' : '0');
+  draw();
+};
 $('editBtn').onclick = () => edit(current);
 $('newBtn').onclick = () => edit(null);
 
